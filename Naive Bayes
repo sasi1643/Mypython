@@ -1,0 +1,76 @@
+sms_r<-  read.csv(file.choose())
+str(sms_r)
+table(sms_r$type)
+
+#Build corpus using text mining
+install.packages("tm")
+library(tm)
+install.packages("tmap")
+library(tmap)
+
+#Create corpu
+sms_corpus<-VCorpus(VectorSource(sms_r$text))
+#cleanup the corpus
+corpus_clean<- tm_map(sms_corpus,tolower)
+corpus_clean<- tm_map(corpus_clean,removeNumbers)
+corpus_clean<- tm_map(corpus_clean,removeWords,stopwords())
+corpus_clean<- tm_map(corpus_clean,removePunctuation)
+corpus_clean<- tm_map(corpus_clean,stripWhitespace)
+corpus_clean<- tm_map(corpus_clean,PlainTextDocument)
+
+# create a document-term sparse matrix
+sms_dtm<- DocumentTermMatrix(corpus_clean)
+sms_dtm
+
+#creating train & test data
+sms_r_train<- sms_r[1:4169,]
+sms_r_test<- sms_r[4170:5559,]
+
+sms_dtm_train<- sms_dtm[1:4169,]
+sms_dtm_test <- sms_dtm[4170:5559,]
+
+sms_corpus_train <- corpus_clean[1:4169]
+sms_corpus_test <- corpus_clean[4170:5559]
+
+#check that the proportion of spam is similar
+prop.table(table(sms_r_train$type))
+prop.table(table(sms_r_test$type))
+
+
+#indicator features for frequent words
+sms_dict <- findFreqTerms(sms_dtm_train,5)
+
+sms_train<- DocumentTermMatrix(sms_corpus_train,list(dictionary=sms_dict))
+sms_test<- DocumentTermMatrix(sms_corpus_test, list(dictionary=sms_dict))
+
+h <- as.matrix(sms_train[5:15,1:10])
+h
+
+# convert counts to a factor
+convert_counts<- function(x){
+  x<- ifelse(x>0,1,0)
+  x<- factor(x,levels=c(0,1),labels = c("no","yes"))}
+
+#apply() convert_counts to colums of train&test data
+sms_train<- apply(sms_train,MARGIN = 2,convert_counts)
+sms_test<- apply(sms_test,MARGIN = 2,convert_counts)
+
+#installing the required e1071 for running naive bayes
+install.packages("e1071")
+library(e1071)
+
+sms_classifier<- naiveBayes(sms_train,sms_r_train$type)
+sms_classifier
+class(sms_classifier)
+
+#evaluating model performance
+sms_test_pred<- predict(sms_classifier,sms_test)
+library(gmodels)
+CrossTable(sms_test_pred,sms_r_test$type,prop.chisq = F,prop.t = F,prop.r = F,dnn = c('predicted','actual'))
+
+################################
+sms_classifier2<- naiveBayes(sms_train,sms_r_train$type,laplace = 1)
+#evaluating model performance
+sms_test_pred2<- predict(sms_classifier2,sms_test)
+
+CrossTable(sms_test_pred2,sms_r_test$type,prop.chisq = F,prop.t = F,prop.r = F,dnn = c('predicted','actual'))
